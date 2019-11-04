@@ -24,6 +24,13 @@ topLeft_x = -150
 topLeft_y = 150
 
 
+# A Utility Function to print the Grid
+def print_grid(arr):
+    for i in range(9):
+        for j in range(9):
+            print(arr[i][j],end='')
+        print('\n')
+
 def text(message, x, y, size):
     FONT = ('Arial', size, 'normal')
     myPen.penup()
@@ -217,5 +224,5 @@ myPen.clear()
 drawGrid(grid)
 myPen.getscreen().update()
 sleep(1)
-print(grid)
+print_grid(grid)
 print("Sudoku Grid Ready")
