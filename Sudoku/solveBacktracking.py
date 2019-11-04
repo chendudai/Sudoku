@@ -1,5 +1,5 @@
 # A Backtracking program  in Python to solve Sudoku problem
-
+import pickle as pkl
 # A Utility Function to print the Grid
 def print_grid(arr):
     for i in range(9):
@@ -100,6 +100,21 @@ def solve_sudoku(arr):
     return False
 
 
+
+#Compare Original Grid with the backtracking result
+def compereSolvedGridToOriginalGrid(originalGrid,solvedGrid):
+    for i in range(9):
+        for j in range(9):
+            if originalGrid[i][j] != solvedGrid[i][j]:
+                return False
+    return True
+
+
+
+
+
+
+
 # Driver main function to test above functions
 if __name__ == "__main__":
 
@@ -107,19 +122,29 @@ if __name__ == "__main__":
     grid = [[0 for x in range(9)] for y in range(9)]
 
     # assigning values to the grid
-    grid = [[3, 0, 6, 5, 0, 8, 4, 0, 0],
-            [5, 2, 0, 0, 0, 0, 0, 0, 0],
-            [0, 8, 7, 0, 0, 0, 0, 3, 1],
-            [0, 0, 3, 0, 1, 0, 0, 8, 0],
-            [9, 0, 0, 8, 6, 3, 0, 0, 5],
-            [0, 5, 0, 0, 9, 0, 6, 0, 0],
-            [1, 3, 0, 0, 0, 0, 2, 5, 0],
-            [0, 0, 0, 0, 0, 0, 0, 7, 4],
-            [0, 0, 5, 2, 0, 6, 3, 0, 0]]
+
+    # grid = [[3, 0, 6, 5, 0, 8, 4, 0, 0],
+    #         [5, 2, 0, 0, 0, 0, 0, 0, 0],
+    #         [0, 8, 7, 0, 0, 0, 0, 3, 1],
+    #         [0, 0, 3, 0, 1, 0, 0, 8, 0],
+    #         [9, 0, 0, 8, 6, 3, 0, 0, 5],
+    #         [0, 5, 0, 0, 9, 0, 6, 0, 0],
+    #         [1, 3, 0, 0, 0, 0, 2, 5, 0],
+    #         [0, 0, 0, 0, 0, 0, 0, 7, 4],
+    #         [0, 0, 5, 2, 0, 6, 3, 0, 0]]
+
+    unsolvedGrid = open('unsolvedGrid.py', 'rb')
+    grid =  pkl.load(unsolvedGrid)
 
     # if success print the grid
     if (solve_sudoku(grid)):
         print_grid(grid)
-        print(grid)
     else:
         print("No solution exists")
+
+    originalGrid = open('originalGrid.py', 'rb')
+    originalGrid = pkl.load(originalGrid)
+
+    result = compereSolvedGridToOriginalGrid(originalGrid,grid)
+    print('The result of the backtracking solution is',result)
+    unsolvedGrid.close()

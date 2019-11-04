@@ -2,6 +2,7 @@
 import turtle
 from random import randint, shuffle
 from time import sleep
+import pickle as pkl
 
 # initialise empty 9 by 9 grid
 grid = []
@@ -187,6 +188,10 @@ def fillGrid(grid):
 # Generate a Fully Solved Grid
 fillGrid(grid)
 
+originalGrid = open("originalGrid.py", "wb");
+pkl.dump(grid, originalGrid)
+originalGrid.close()
+
 # Start Removing Numbers one by one
 
 # A higher number of attempts will end up removing more numbers from the grid
@@ -225,4 +230,9 @@ drawGrid(grid)
 myPen.getscreen().update()
 sleep(1)
 print_grid(grid)
+
+unsolvedGrid = open("unsolvedGrid.py", "wb");
+pkl.dump(grid, unsolvedGrid)
+unsolvedGrid.close()
+
 print("Sudoku Grid Ready")
