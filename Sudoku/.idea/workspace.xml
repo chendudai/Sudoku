@@ -92,7 +92,7 @@
     </option>
   </component>
   <component name="RunManager" selected="Python.createGrid">
-    <configuration name="createGrid" type="PythonConfigurationType" factoryName="Python" temporary="true">
+    <configuration name="createGrid" type="PythonConfigurationType" factoryName="Python">
       <module name="Sudoku" />
       <option name="INTERPRETER_OPTIONS" value="" />
       <option name="PARENT_ENVS" value="true" />
@@ -157,7 +157,6 @@
     </configuration>
     <recent_temporary>
       <list>
-        <item itemvalue="Python.createGrid" />
         <item itemvalue="Python.test (1)" />
         <item itemvalue="Python.test" />
       </list>
