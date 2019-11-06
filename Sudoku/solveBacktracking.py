@@ -1,5 +1,7 @@
 # A Backtracking program  in Python to solve Sudoku problem
 import pickle as pkl
+import time
+
 # A Utility Function to print the Grid
 def print_grid(arr):
     for i in range(9):
@@ -133,11 +135,24 @@ if __name__ == "__main__":
     #         [0, 0, 0, 0, 0, 0, 0, 7, 4],
     #         [0, 0, 5, 2, 0, 6, 3, 0, 0]]
 
+#hardest grid possible
+    # grid = [[0, 0, 0, 8, 0, 1, 0, 0, 0],
+    #         [0, 0, 0, 0, 0, 0, 4, 3, 0],
+    #         [5, 0, 0, 0, 0, 0, 0, 0, 0],
+    #         [0, 0, 0, 0, 7, 0, 8, 0, 0],
+    #         [0, 0, 0, 0, 0, 0, 1, 0, 0],
+    #         [0, 2, 0, 0, 3, 0, 0, 0, 0],
+    #         [6, 0, 0, 0, 0, 0, 0, 7, 5],
+    #         [0, 0, 3, 4, 0, 0, 0, 0, 0],
+    #         [0, 0, 0, 2, 0, 0, 6, 0, 0]]
+
     unsolvedGrid = open('unsolvedGrid.py', 'rb')
-    grid =  pkl.load(unsolvedGrid)
+    grid =pkl.load(unsolvedGrid)
+    t = time.time()
 
     # if success print the grid
     if (solve_sudoku(grid)):
+        elapsed = time.time() - t
         print_grid(grid)
     else:
         print("No solution exists")
@@ -146,5 +161,7 @@ if __name__ == "__main__":
     originalGrid = pkl.load(originalGrid)
 
     result = compereSolvedGridToOriginalGrid(originalGrid,grid)
-    print('The result of the backtracking solution is',result)
+    print('The time that the backtracking solution took is:',elapsed)
+    print('The result of the backtracking solution is:',result)
     unsolvedGrid.close()
+
