@@ -218,7 +218,7 @@ while numbersToDelete > 0 and attempts > 0:
     # Select a random cell that is not already empty
     row = randint(0, gridSize-1)
     col = randint(0, gridSize-1)
-    while grid[row][col] == 0:
+    while grid[row][col] == 0: # TODO: random from full cells only.
         row = randint(0, gridSize-1)
         col = randint(0, gridSize-1)
     # Remember its cell value in case we need to put it back
