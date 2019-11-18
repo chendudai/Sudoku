@@ -159,12 +159,12 @@ def fillGrid(grid):
             shuffle(numberList)
             for value in numberList:
                 # Check that this value has not already be used on this row
-                if not (value in grid[row]):
+                if value not in grid[row]:
                     listOfNumbers = []
                     # Check that this value has not already be used on this column
                     for i in range(0,gridSize):
                         listOfNumbers.append(grid[i][col])
-                    if not value in (listOfNumbers):
+                    if value not in (listOfNumbers):
                         # Identify which of the 9 squares we are working on
                         square = []
                         if row < 3:
@@ -189,7 +189,7 @@ def fillGrid(grid):
                             else:
                                 square = [grid[i][6:9] for i in range(6, 9)]
                         # Check that this value has not already be used on this 3x3 square
-                        if not value in (square[0] + square[1] + square[2]):
+                        if value not in (square[0] + square[1] + square[2]):
                             grid[row][col] = value
                             if checkGrid(grid):
                                 return True
