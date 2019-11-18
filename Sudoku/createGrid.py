@@ -82,7 +82,7 @@ def drawGrid(grid):
 
 
 # A function to check if the grid is full
-def checkGrid(grid):
+def gridIsFull(grid):
     for row in range(0, gridSize):
         for col in range(0, gridSize):
             if grid[row][col] == 0:
@@ -102,9 +102,9 @@ def solveGrid(grid):
         if grid[row][col] == 0:
             for value in range(1, gridSize+1):
                 # Check that this value has not already be used on this row
-                if not (value in grid[row]):
+                if value not in grid[row]:
                     # Check that this value has not already be used on this column
-                    if not value in (
+                    if value not in (
                     grid[0][col], grid[1][col], grid[2][col], grid[3][col], grid[4][col], grid[5][col], grid[6][col],
                     grid[7][col], grid[8][col]):
                         # Identify which of the 9 squares we are working on
@@ -131,9 +131,9 @@ def solveGrid(grid):
                             else:
                                 square = [grid[i][6:9] for i in range(6, 9)]
                         # Check that this value has not already be used on this 3x3 square
-                        if not value in (square[0] + square[1] + square[2]):
+                        if value not in (square[0] + square[1] + square[2]):
                             grid[row][col] = value
-                            if checkGrid(grid):
+                            if gridIsFull(grid):
                                 counter += 1
                                 break
                             else:
@@ -191,7 +191,7 @@ def fillGrid(grid):
                         # Check that this value has not already be used on this 3x3 square
                         if value not in (square[0] + square[1] + square[2]):
                             grid[row][col] = value
-                            if checkGrid(grid):
+                            if gridIsFull(grid):
                                 return True
                             else:
                                 if fillGrid(grid):
@@ -203,7 +203,7 @@ def fillGrid(grid):
 # Generate a Fully Solved Grid
 fillGrid(grid)
 
-originalGrid = open("originalGrid.py", "wb");
+originalGrid = open("originalGrid.py", "wb")
 pkl.dump(grid, originalGrid)
 originalGrid.close()
 
