@@ -3,6 +3,7 @@ import turtle
 from random import randint, shuffle
 from time import sleep
 import pickle as pkl
+import random
 
 # # initialise empty 9 by 9 grid
 grid = []
@@ -22,7 +23,6 @@ for i in range(gridSize):
 # grid.append([0, 0, 0, 0, 0, 0, 0, 0, 0])
 
 myPen = turtle.Turtle()
-myPen.tracer(0)
 myPen.speed(0)
 myPen.color("#000000")
 myPen.hideturtle()
@@ -95,6 +95,9 @@ def gridIsFull(grid):
 # A backtracking/recursive function to check all possible combinations of numbers until a solution is found
 def solveGrid(grid):
     global counter
+    if counter > 1:
+        return False
+
     # Find next empty cell
     for i in range(0, gridSize**2):
         row = i // gridSize
@@ -211,19 +214,20 @@ originalGrid.close()
 
 # A higher number of attempts will end up removing more numbers from the grid
 # Potentially resulting in more difficiult grids to solve!
-numbersToDelete = 50
+numbersToDelete = 60
 attempts = 30
 counter = 1
+listIndexesInGrid = list(range(0, gridSize**2))
 while numbersToDelete > 0 and attempts > 0:
     # Select a random cell that is not already empty
-    row = randint(0, gridSize-1)
-    col = randint(0, gridSize-1)
-    while grid[row][col] == 0:  # TODO: random from full cells only.
-        row = randint(0, gridSize-1)
-        col = randint(0, gridSize-1)
+    randomIndex = random.choice(listIndexesInGrid)
+    row = randomIndex // gridSize
+    col = randomIndex % gridSize
+
     # Remember its cell value in case we need to put it back
     backup = grid[row][col]
     grid[row][col] = 0
+    listIndexesInGrid.remove(randomIndex)
 
     # Take a full copy of the grid
     copyGrid = []
@@ -238,6 +242,8 @@ while numbersToDelete > 0 and attempts > 0:
     # If the number of solution is different from 1 then we need to cancel the change by putting the value we took away back in the grid
     if counter != 1:
         grid[row][col] = backup
+        listIndexesInGrid.append(randomIndex)
+
         # We could stop here, but we can also have another attempt with a different cell just to try to remove more numbers
         attempts -= 1
     else:
@@ -248,9 +254,10 @@ myPen.getscreen().update()
 sleep(1)
 print_grid(grid)
 
-unsolvedGrid = open("unsolvedGrid.py", "wb");
+unsolvedGrid = open("unsolvedGrid.py", "wb")
 pkl.dump(grid, unsolvedGrid)
 unsolvedGrid.close()
 print("The number of deleted numbers is:")
 print(count_zeros(grid))
 print("Sudoku Grid Ready")
+
