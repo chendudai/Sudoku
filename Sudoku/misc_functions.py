@@ -1,4 +1,3 @@
-# -----------------------------------------------------------------------------
 import torch
 from torch.utils.data import Dataset, DataLoader
 import torch.nn.functional as F
@@ -7,6 +6,11 @@ import numpy as np
 import pickle
 import time
 import pandas as pd
+from plot_confusion_matrix import plot_CM_AUX
+
+# constants:
+train_num_classes = 10
+solution_num_classes = 9
 
 def checkDevice():
     if torch.cuda.is_available():
@@ -15,12 +19,6 @@ def checkDevice():
     # device = torch.device("cpu")
     print("running calculations on: ", device)
     return device
-
-
-# -----------------------------------------------------------------------------
-# constants:
-train_num_classes = 10
-solution_num_classes = 9
 
 def to_categorical(y, num_classes):
     """ 1-hot encodes a tensor """
@@ -141,54 +139,6 @@ def delete_cells_improved_complexity(grids, n_delete, device=torch.device("cpu")
                         torch.randint(0, 81, (n_delete * len(boards), ))] = 0
     return torch_categorical(boards, train_num_classes, device)
 
-def testNet(net):
-    test_hits = 0
-    test_samples_checked = 0
-    net.eval()
-    with torch.no_grad():
-        for data in test_loader:
-            quizzes, solutions = data
-            outputs = net(quizzes)
-            test_hits += (outputs.argmax(1) == solutions.argmax(1)).sum().double()
-            test_samples_checked += len(solutions)
-            # plot_CM_AUX(np.array(labels), np.array(predicted), classes_name)
-    print('Accuracy of the network on the ' + str(test_samples_checked) + ' test images: %d %%' %
-          (100 * test_hits / (test_samples_checked*9*9)))
-# -----------------------------------------------------------------------------
-class CNN_1(torch.nn.Module):
-    # model
-
-    def __init__(self):
-        super(CNN_1, self).__init__()
-
-        # Input channels = 10x9x9 (one hot vector of 0-9), output = 32x10x10
-        self.conv1 = torch.nn.Conv2d(train_num_classes, 32, kernel_size=3, stride=3, padding=0)
-        # from 32x10x10 to 32x11x11
-        self.pool = torch.nn.MaxPool2d(kernel_size=2, stride=1, padding=1)
-
-        # from 32x11x11 to 32x12x12
-        self.conv2 = torch.nn.Conv2d(32, 32, kernel_size=2, stride=1, padding=1)
-
-        # 4608 input features, 64 output features (see sizing flow below)
-        self.fc1 = torch.nn.Linear(10 * 9 * 9, 9 ** 3)
-        self.bn1 = torch.nn.BatchNorm1d(9 ** 3)
-
-        self.fc2 = torch.nn.Linear(9 ** 3, 9 ** 3)
-        self.bn2 = torch.nn.BatchNorm1d(9 ** 3)
-        # 64 input features, 10 output features for our 10 defined classes
-        self.fc3 = torch.nn.Linear(9 ** 3, solution_num_classes ** 3)
-
-        self.soft = torch.nn.Softmax(dim=1)
-
-    def forward(self, x):
-        # x = x.view(-1, 10*9*9)
-        x = x.reshape(-1, 10 * 9 * 9)
-        x = F.leaky_relu(self.bn1(self.fc1(x)))
-        x = F.leaky_relu(self.bn2(self.fc2(x)))
-        x = self.fc3(x).view(-1, solution_num_classes, solution_num_classes, solution_num_classes)
-        x = self.soft(x)
-        return x
-# -----------------------------------------------------------------------------
 def getDataLoaders(batch_size, device):
     if device == torch.device("cuda:0"):
         # if we run it through Colab:
@@ -216,12 +166,12 @@ def getDataLoaders(batch_size, device):
     val_set = MyDataset(X_val, Y_val)
     test_set = MyDataset(X_test, Y_test)
 
-    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=2, drop_last=True)
-    test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=True, num_workers=2)
-    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True, num_workers=2)
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=0, drop_last=True)
+    test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=True, num_workers=0)
+    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True, num_workers=0)
     return train_loader, test_loader, val_loader
-# -----------------------------------------------------------------------------
-def trainNet(net, batch_size, learning_rate, step, patience, train_loader, val_loader):
+
+def trainNet(net, batch_size, learning_rate, step, patience, valCalcFreq, train_loader, val_loader, device):
     # Print all of the hyperparameters of the training iteration:
     print("===== HYPERPARAMETERS =====")
     print("batch_size=", batch_size)
@@ -229,10 +179,6 @@ def trainNet(net, batch_size, learning_rate, step, patience, train_loader, val_l
     print("step=", step)
     print("patience=", patience)
     print("=" * 30)
-
-    # Get training data
-    n_batches = len(train_loader)
-    print_every = n_batches // 10
 
     # Time for printing
     training_start_time = time.time()
@@ -244,9 +190,10 @@ def trainNet(net, batch_size, learning_rate, step, patience, train_loader, val_l
     train_loss_total = np.array([])
     val_loss_total = np.array([])
 
-    a = np.arange(12, 62, step)
-    for n_delete, n_epochs in zip(np.append([2, 3, 4, 6, 8, 10], a),
-                                  np.append([3, 3, 4, 5, 5,  5], 10 * np.ones(a.shape))):
+
+    delJumps = np.arange(12, 62, step)
+    n_epochJumps = 20 * np.ones(delJumps.shape)
+    for n_delete, n_epochs in zip(np.append([1, 2, 3, 4, 6, 8, 10], delJumps), np.append([2, 2, 3, 4, 5, 5,  5], n_epochJumps)):
         print(f'Delete: {n_delete}.')
 
         # for epoch in range(n_epochs):
@@ -255,15 +202,12 @@ def trainNet(net, batch_size, learning_rate, step, patience, train_loader, val_l
         optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)
         while p < patience:
             epoch += 1
-            running_loss = 0.0
-            running_hits = 0.0
+            train_running_loss = 0.0
+            train_running_hits = 0.0
+            train_samples_checked = 0
             runningDeletedNumber = 0
-            samples_checked = 0
             start_time = time.time()
-            train_running_loss_epoch = 0
 
-            train_samples_checked_epoch = 0
-            train_running_hits_epoch = 0
             net.train()
             for batch_idx, data in enumerate(train_loader, 0):
 
@@ -277,45 +221,27 @@ def trainNet(net, batch_size, learning_rate, step, patience, train_loader, val_l
 
                 # Forward pass, backward pass, optimize
                 outputs = net(quizzes)
-                # solved_boards = fillBlank_imporved_complexity(net, quizzes, n_delete, device)  # 1-9
-
                 loss_matrix, quizz_example, sol_example = loss_func(outputs, solutions)
-                loss_size = (mask_of_deleted_cells * loss_matrix).sum()
+                loss_size = (mask_of_deleted_cells * loss_matrix).sum()/mask_of_deleted_cells.sum()
                 loss_size.backward()
                 optimizer.step()
 
-                # Print statistics
-                running_loss += loss_size.data
-                train_running_loss_epoch += loss_size.data
-
-                running_hits += (
+                # Update statstics:
+                train_running_loss += loss_size.data
+                train_running_hits += (
                             (outputs.argmax(1) == solutions.argmax(1)).float() * mask_of_deleted_cells).sum().double()
                 # running_hits += ((solved_boards == solutions.argmax(1) + 1).float() * mask_of_deleted_cells).sum().double()
-                samples_checked += len(outputs)
                 runningDeletedNumber += mask_of_deleted_cells.sum()
-                train_running_hits_epoch += (outputs.argmax(1) == solutions.argmax(1)).sum().double()
-                train_samples_checked_epoch += len(outputs)
-                # Print every 10th batch of an epoch
-                if (batch_idx + 1) % (print_every + 1) == 0:
-                    print("Epoch {}, {:d}% \t train_loss: {:.3f} Acc: {:.3f} took: {:.2f}s".format(
-                        epoch, int(100 * (batch_idx + 1) / n_batches), running_loss / samples_checked,
-                                                                       running_hits / runningDeletedNumber,
-                                                                       time.time() - start_time))
-                    # Reset running loss and time
-                    running_loss = 0.0
-                    running_hits = 0.0
-                    runningDeletedNumber = 0
-                    samples_checked = 0
-                    start_time = time.time()
-
+                train_samples_checked += len(outputs)
             train_acc_total = np.append(train_acc_total,
-                                        (train_running_hits_epoch / (
-                                                    train_samples_checked_epoch * n_delete)).cpu().numpy())
-            train_loss_total = np.append(train_loss_total,
-                                         (train_running_loss_epoch / train_samples_checked_epoch).cpu().numpy())
+                                        (train_running_hits / runningDeletedNumber).cpu().numpy())
+            train_loss_total = np.append(train_loss_total, (train_running_loss / len(train_loader)).cpu().numpy())
+            print("Delete {}  Epoch {}:\tTook {:.2f}s. \t Train: loss = {:.3f} Acc = {:.3f}"
+                  .format(n_delete, epoch, time.time() - start_time, train_loss_total[-1], train_acc_total[-1]))
 
-            if epoch % 5 == 0:
+            if epoch % valCalcFreq == 0:
                 # At the end of the epoch, do a pass on the validation set
+                val_start_time = time.time()
                 total_val_loss = 0
                 val_hits = 0
                 val_runningDeletedNumber = 0
@@ -333,7 +259,7 @@ def trainNet(net, batch_size, learning_rate, step, patience, train_loader, val_l
                         val_solved_boards = fillBlank_imporved_complexity(net, val_quizzes, n_delete, device)
                         val_iterative_outputs = torch_categorical(val_solved_boards - 1, 9, device)
                         val_loss_matix, _, _ = loss_func(val_iterative_outputs, val_solutions)
-                        total_val_loss += (val_mask_of_deleted_cells * val_loss_matix).sum().data
+                        total_val_loss += (val_mask_of_deleted_cells * val_loss_matix).sum()/val_mask_of_deleted_cells.sum()
                         # val_hits += ((val_outputs.argmax(1) == val_solutions.argmax(1)) * val_mask_of_deleted_cells).sum().double()
                         val_hits += ((val_solved_boards == val_solutions.argmax(
                             1) + 1).float() * val_mask_of_deleted_cells).sum().double()
@@ -341,29 +267,55 @@ def trainNet(net, batch_size, learning_rate, step, patience, train_loader, val_l
                         val_samples_checked += len(val_solutions)
 
                 val_acc_total = np.append(val_acc_total, (val_hits / val_runningDeletedNumber).cpu().numpy())
-                val_loss_total = np.append(val_loss_total, (total_val_loss / val_samples_checked).cpu().numpy())
+                val_loss_total = np.append(val_loss_total, (total_val_loss / len(val_loader)).cpu().numpy())
                 numDeleted = np.append(numDeleted, (val_runningDeletedNumber / val_samples_checked).cpu().numpy())
-                print("Validation: loss = {:.3f} Acc = {:.3f}"
-                      .format(total_val_loss / val_samples_checked, val_hits / val_runningDeletedNumber))
+                print("Delete {}  Epoch {}:\tTook {:.2f}s. \t Validation: loss = {:.3f} Acc = {:.3f}"
+                      .format(n_delete, epoch, time.time() - val_start_time, val_loss_total[-1], val_acc_total[-1]))
                 if val_acc_total[-1] <= val_acc_total[-2]:
                     p += 1
                 else:
                     p = 0
-                if epoch == n_epochs:
-                    break
+                # if epoch == n_epochs:
+                #     break
 
     print("Training finished, took {:.3f}s".format(time.time() - training_start_time))
-    return numDeleted, train_acc_total, train_loss_total, val_acc_total[1:], val_loss_total
-# -----------------------------------------------------------------------------
-if __name__ == "__main__":
-    device = checkDevice()
-    CNN = CNN_1().to(device)
-    batch_size = 128
-    LR = 0.0001
-    step = 1
-    patience = 10
-    train_loader, test_loader, val_loader = getDataLoaders(batch_size, device)
-    numDeleted, train_acc, train_loss, val_acc, val_loss = \
-        trainNet(CNN, batch_size, LR, step, patience, train_loader, val_loader)
-# -----------------------------------------------------------------------------
+    return net, numDeleted, train_acc_total, train_loss_total, val_acc_total[1:], val_loss_total
 
+def testNet(net, n_delete, test_loader, device):
+    # At the end of the epoch, do a pass on the validation set
+    hits = 0
+    deltas = torch.tensor([], dtype=torch.int64)
+    runningDeletedNumber = 0
+    samples_checked = 0
+    true_cell_total = torch.tensor([], dtype=torch.int64)
+    solved_cell_total = torch.tensor([], dtype=torch.int64)
+    net.eval()
+    with torch.no_grad():
+        for data in test_loader:
+            # Wrap tensors in Variables
+            _, solutions = data
+            solutions = solutions.float().to(device)
+            quizzes = delete_cells_improved_complexity(solutions, n_delete, device=device)
+            mask_of_deleted_cells = (quizzes.argmax(1) == 0)
+            # Forward pass
+            solved_boards = fillBlank_imporved_complexity(net, quizzes, n_delete, device)
+            # statistics:
+            solutions_boards = solutions.argmax(1) + 1
+            deltas = torch.cat((deltas, diff(solutions_boards, solved_boards)))  # get number of errors on each quizz
+            runningDeletedNumber += mask_of_deleted_cells.sum()
+            hits += ((solved_boards == solutions_boards).float() * mask_of_deleted_cells).sum().double()
+            samples_checked += len(solutions)
+            true_cell_total = torch.cat((true_cell_total, solutions_boards[mask_of_deleted_cells]))
+            solved_cell_total = torch.cat((solved_cell_total, solved_boards[mask_of_deleted_cells]))
+    boardAcc = (deltas == 0).float().mean()  # portion of correct solved quizzes
+    plotConfusionMatrix(true_cell_total, solved_cell_total)
+    print("test images number: " + str(samples_checked) + '. Cell Acc:  %f, Board Acc:  %f' % (hits / runningDeletedNumber,  boardAcc))
+
+def diff(grids_true, grids_pred):
+    # get number of errors on each quizz
+    return (grids_true != grids_pred).sum((1, 2))
+
+def plotConfusionMatrix(truthBoards, predictedBoards):
+    truthBoards = (truthBoards - 1)
+    predictedBoards = (predictedBoards - 1)
+    plot_CM_AUX(truthBoards, predictedBoards, normalize=True, class_names=np.arange(1, 10).astype(str))

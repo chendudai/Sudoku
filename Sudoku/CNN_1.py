@@ -98,31 +98,11 @@ class CNN_1(torch.nn.Module):
 
         self.soft = torch.nn.Softmax(dim=1)
     def forward(self, x):
-        # Computes the activation of the first convolution
-        # Size changes from (10, 9, 9) to (18, 9, 9)
-        # x = F.relu(self.conv1(x))
-
-        # Size changes from (18, 9, 9) to (18, 10, 10)
-        # x = self.pool(x)
-
-        # Computes the activation of the second convolution
-        # Size changes from (10, 9, 9) to (18, 9, 9)
-        # x = F.relu(self.conv2(x))
-
-        # Reshape data to input to the input layer of the neural net
-        # Size changes from (18, 16, 16) to (1, 4608)
-        # Recall that the -1 infers this dimension from the other given dimension
         y1 = self.conv1_9(x)
         x = self.conv9_1(x)
         x = torch.cat((y1.view(-1, 9*32), x.view(-1, 9*32)), dim=1)
-        # x = x.view(-1, 9 * 32)
-
-        # Computes the activation of the first fully connected layer
-        # Size changes from (1, 4608) to (1, 64)
         x = F.relu(self.bnf1(self.fc1(x)))
         x = F.relu(self.bnf2(self.fc2(x)))
-        # Computes the second fully connected layer (activation applied later)
-        # Size changes from (1, 64) to (1, 10)
         x = self.fc3(x).view(-1, solution_num_classes, solution_num_classes, solution_num_classes)
         x = self.soft(x)
         return x
