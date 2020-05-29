@@ -354,3 +354,7 @@ Sudoku/dataset/1M_kaggle/quizzes.pkl
 Sudoku/dataset/1M_kaggle/solutions.pkl
 Sudoku/dataset/1M_kaggle/sudoku.csv
 Sudoku/dataset/1M_kaggle/sudoku.zip
+kaggle.json
+unsolvedGrid.py
+originalGrid.py
+sudoku.csv
