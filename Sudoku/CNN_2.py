@@ -1,3 +1,6 @@
+# -----------------------------------------------------------------------------
+import pandas as pd
+import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 import torch.nn.functional as F
@@ -5,7 +8,8 @@ from sklearn.model_selection import train_test_split
 import numpy as np
 import pickle
 import time
-
+import pandas as pd
+# -----------------------------------------------------------------------------
 # constants:
 train_num_classes = 10
 solution_num_classes = 9
@@ -37,17 +41,6 @@ def split_data(x, y, ratio_train = 0.8, ratio_test = 0.1, random_state = 42):
 
     return x_train, x_val, x_test, y_train, y_val, y_test
 
-# load data
-base_data_path = r'C:\Users\ברק\Desktop\Sudoku\Sudoku\dataset\1M_kaggle\\'
-with open(base_data_path + 'quizzes.pkl', 'rb') as input:
-    quizzes = pickle.load(input)
-with open(base_data_path + 'solutions.pkl', 'rb') as input:
-    solutions = pickle.load(input)
-
-# convert to one-hot matrices
-quizzes_1h = to_categorical(quizzes[:10**2, :, :], 10)
-solutions_1h = to_categorical(solutions[:10**2, :, :] - 1, 9)
-
 # dataset object
 class MyDataset(Dataset):
     def __init__(self, data, solution, transform=None):
@@ -67,55 +60,12 @@ class MyDataset(Dataset):
     def __len__(self):
         return len(self.data)
 
-# model
-class CNN_1(torch.nn.Module):
-
-    # Our batch shape for input x is (3, 32, 32)
-
-    def __init__(self):
-        super(CNN_1, self).__init__()
-
-        # Input channels = 10x9x9 (one hot vector of 0-9), output = 32x10x10
-        self.conv1 = torch.nn.Conv2d(train_num_classes, 32, kernel_size=2, stride=1, padding=1)
-        # from 32x10x10 to 32x11x11
-        self.pool = torch.nn.MaxPool2d(kernel_size=2, stride=1, padding=1)
-
-        self.conv1_9 = torch.nn.Conv2d(train_num_classes, 32, kernel_size=(1, 9), stride=1, padding=0)
-        self.conv9_1 = torch.nn.Conv2d(train_num_classes, 32, kernel_size=(9, 1), stride=1, padding=0)
-
-
-        # from 32x10x10 to 32x11x11
-        self.conv2 = torch.nn.Conv2d(32, 32, kernel_size=2, stride=1, padding=1)
-
-        # 4608 input features, 64 output features (see sizing flow below)
-        self.fc1 = torch.nn.Linear(2 * 9 * 32, 9**3)
-        self.bnf1 = torch.nn.BatchNorm1d(9**3)
-
-        self.fc2 = torch.nn.Linear(9 ** 3, 9 ** 3)
-        self.bnf2 = torch.nn.BatchNorm1d(9 ** 3)
-        # 64 input features, 10 output features for our 10 defined classes
-        self.fc3 = torch.nn.Linear(9**3, solution_num_classes**3)
-
-        self.soft = torch.nn.Softmax(dim=1)
-    def forward(self, x):
-        y1 = self.conv1_9(x)
-        x = self.conv9_1(x)
-        x = torch.cat((y1.view(-1, 9*32), x.view(-1, 9*32)), dim=1)
-        x = F.relu(self.bnf1(self.fc1(x)))
-        x = F.relu(self.bnf2(self.fc2(x)))
-        x = self.fc3(x).view(-1, solution_num_classes, solution_num_classes, solution_num_classes)
-        x = self.soft(x)
-        return x
-
 
 # def fillBlank(self, net, quizzes):
 #     preds = net(quizzes)
 #     zeros = np.where()
 #     best_probs =
 
-
-
-# training function:
 
 def loss_func(quizzes, solutions):
     # Loss function
@@ -129,7 +79,85 @@ def delete_cells(grids, n_delete):
 
     return to_categorical(boards, train_num_classes)
 
+def testNet(net):
+    test_hits = 0
+    test_samples_checked = 0
+    net.eval()
+    with torch.no_grad():
+        for data in test_loader:
+            quizzes, solutions = data
+            outputs = net(quizzes)
+            test_hits += (outputs.argmax(1) == solutions.argmax(1)).sum().double()
+            test_samples_checked += len(solutions)
+            # plot_CM_AUX(np.array(labels), np.array(predicted), classes_name)
+    print('Accuracy of the network on the ' + str(test_samples_checked) + ' test images: %d %%' %
+          (100 * test_hits / (test_samples_checked*9*9)))
+# -----------------------------------------------------------------------------
+# model
+class CNN_2(torch.nn.Module):
+    def __init__(self):
+        super(CNN_2, self).__init__()
+        self.kenels_num = 16
+        self.conv1_9 = torch.nn.Conv2d(train_num_classes, self.kenels_num, kernel_size=(1, 9), stride=1, padding=0)
+        self.conv9_1 = torch.nn.Conv2d(train_num_classes, self.kenels_num, kernel_size=(9, 1), stride=1, padding=0)
+        self.conv3_3 = torch.nn.Conv2d(train_num_classes, self.kenels_num, kernel_size=3, stride=3, padding=0)
+        # self.pool = torch.nn.MaxPool2d(kernel_size=2, stride=1, padding=1)
 
+        # 4608 input features, 64 output features (see sizing flow below)
+        self.fc1 = torch.nn.Linear(2 * 9 * self.kenels_num, 9 ** 2)
+        self.bn1 = torch.nn.BatchNorm1d(9 ** 2)
+
+        self.fc2 = torch.nn.Linear(9 ** 2, 9 ** 3)
+        self.bn2 = torch.nn.BatchNorm1d(9 ** 3)
+        # 64 input features, 10 output features for our 10 defined classes
+        self.fc3 = torch.nn.Linear(9 ** 3, solution_num_classes ** 3)
+
+        self.soft = torch.nn.Softmax(dim=1)
+
+    def forward(self, x):
+        y1 = self.conv1_9(x)
+        # y2 = self.conv3_3(x)
+        x = self.conv9_1(x)
+
+        x = torch.cat((y1.view(-1, 9 * self.kenels_num), x.view(-1, 9 * self.kenels_num)), dim=1)
+        # x = torch.cat((y1.view(-1, 9*kenels_num), y2.view(-1, 9*kenels_num), x.view(-1, 9*kenels_num)), dim=1)
+        # x = x.view(-1, 9*kenels_num)
+        # Computes the activation of the first fully connected layer
+        x = F.leaky_relu(self.bn1(self.fc1(x)))
+        x = F.leaky_relu(self.bn2(self.fc2(x)))
+        # Computes the second fully connected layer (activation applied later)
+        # Size changes from (1, 64) to (1, 10)
+        x = self.fc3(x).view(-1, solution_num_classes, solution_num_classes, solution_num_classes)
+        x = self.soft(x)
+        return x
+# -----------------------------------------------------------------------------
+# convert to one-hot matrices
+
+base_data_path = r'C:\Users\ברק\Desktop\Sudoku\Sudoku\dataset\1M_kaggle\\'
+with open(base_data_path + 'quizzes.pkl', 'rb') as input:
+    quizzes = pickle.load(input)
+with open(base_data_path + 'solutions.pkl', 'rb') as input:
+    solutions = pickle.load(input)
+
+# convert to one-hot matrices
+quizzes_1h = to_categorical(quizzes[:10**2, :, :], 10)
+solutions_1h = to_categorical(solutions[:10**2, :, :] - 1, 9)
+
+# split data
+X_train, X_val, X_test, Y_train, Y_val, Y_test = split_data(quizzes_1h, solutions_1h)
+
+train_set = MyDataset(X_train, Y_train)
+val_set = MyDataset(X_val, Y_val)
+test_set = MyDataset(X_test, Y_test)
+
+batch_size = 8
+
+train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=2, drop_last=False,
+                          pin_memory=torch.cuda.is_available())
+test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=torch.cuda.is_available())
+val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=torch.cuda.is_available())
+
+# -----------------------------------------------------------------------------
 if torch.cuda.is_available():
     torch.cuda.current_device()
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -240,33 +268,9 @@ def trainNet(net, batch_size, n_epochs, learning_rate):
 
     print("Training finished, took {:.2f}s".format(time.time() - training_start_time))
     return numDeleted, train_acc_total, train_loss_total, val_acc_total, val_loss_total
-
-def testNet(net):
-    test_hits = 0
-    test_samples_checked = 0
-    with torch.no_grad():
-        for data in test_loader:
-            quizzes, solutions = data
-            outputs = net(quizzes)
-            test_hits += (outputs.argmax(1) == solutions.argmax(1)).sum().double()
-            test_samples_checked += len(solutions)
-            # plot_CM_AUX(np.array(labels), np.array(predicted), classes_name)
-    print('Accuracy of the network on the ' + str(test_samples_checked) + ' test images: %d %%' %
-          (100 * test_hits / (test_samples_checked*9*9)))
-
-
-X_train, X_val, X_test, Y_train, Y_val, Y_test = split_data(quizzes_1h, solutions_1h)
-
-train_set = MyDataset(X_train, Y_train)
-val_set = MyDataset(X_val, Y_val)
-test_set = MyDataset(X_test, Y_test)
-
-train_loader = DataLoader(train_set, batch_size=128, shuffle=True, num_workers=2, drop_last=False,
-                          pin_memory=torch.cuda.is_available())
-test_loader = DataLoader(test_set, batch_size=4, shuffle=True, num_workers=2, pin_memory=torch.cuda.is_available())
-val_loader = DataLoader(val_set, batch_size=64, shuffle=True, num_workers=2, pin_memory=torch.cuda.is_available())
-
+# -----------------------------------------------------------------------------
 if __name__ == "__main__":
-    CNN = CNN_1()
-    trainNet(CNN, batch_size=128, n_epochs=15, learning_rate=0.001)
+    CNN = CNN_2().to(device)
+    numDeleted, train_acc, train_loss, val_acc, val_loss = trainNet(CNN, batch_size=batch_size, n_epochs=15, learning_rate=0.0001)
     # testNet(CNN)
+# -----------------------------------------------------------------------------
