@@ -354,6 +354,7 @@ Sudoku/dataset/1M_kaggle/quizzes.pkl
 Sudoku/dataset/1M_kaggle/solutions.pkl
 Sudoku/dataset/1M_kaggle/sudoku.csv
 Sudoku/dataset/1M_kaggle/sudoku.zip
+<<<<<<< HEAD
 Sudoku/deltas_from_test_FCnet.npy
 Sudoku/originalGrid.py
 Sudoku/quizzesBoards_from_test_FCnet.npy
@@ -361,3 +362,13 @@ Sudoku/unsolvedGrid.py
 Sudoku/net_dicts/CNN_1_dict
 Sudoku/net_dicts/dict and stats FC_1/FC_stats_LR0.0001_batchSize512_step2_patience10.txt
 Sudoku/net_dicts/dict and stats FC_1/readme.txt
+=======
+kaggle.json
+unsolvedGrid.py
+originalGrid.py
+sudoku.csv
+try/try.py
+try/try2.py
+try/try3.py
+try/venv/pyvenv.cfg
+>>>>>>> d4f7cbd9ff6a150fdcf7555411f6bd1ccea0ec56
