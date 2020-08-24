@@ -7,6 +7,11 @@ import pickle
 import time
 import pandas as pd
 from plot_confusion_matrix import plot_CM_AUX
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from sklearn.manifold import TSNE
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 
 # constants:
 train_num_classes = 10
@@ -59,8 +64,6 @@ def split_data(x, y, ratio_train=0.8, ratio_test=0.1, random_state=42):
 # dataset object
 class MyDataset(Dataset):
     def __init__(self, data, solution, transform=None):
-        # self.data = torch.from_numpy(data).float()
-        # self.solution = torch.from_numpy(solution).float()
         self.data = data
         self.solution = solution
         self.transform = transform
@@ -167,8 +170,8 @@ def getDataLoaders(batch_size, device):
     test_set = MyDataset(X_test, Y_test)
 
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=0, drop_last=True)
-    test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=True, num_workers=0)
-    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True, num_workers=0)
+    test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=True, num_workers=0, drop_last=False)
+    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True, num_workers=0, drop_last=False)
     return train_loader, test_loader, val_loader
 
 def trainNet(net, batch_size, learning_rate, step, patience, valCalcFreq, train_loader, val_loader, device):
@@ -193,9 +196,9 @@ def trainNet(net, batch_size, learning_rate, step, patience, valCalcFreq, train_
 
     delJumps = np.arange(12, 62, step)
     n_epochJumps = 20 * np.ones(delJumps.shape)
+    epochsOfDelete = [0]   # all epochs
     for n_delete, n_epochs in zip(np.append([1, 2, 3, 4, 6, 8, 10], delJumps), np.append([2, 2, 3, 4, 5, 5,  5], n_epochJumps)):
         print(f'Delete: {n_delete}.')
-
         # for epoch in range(n_epochs):
         epoch = 0
         p = 0
@@ -278,8 +281,10 @@ def trainNet(net, batch_size, learning_rate, step, patience, valCalcFreq, train_
                 # if epoch == n_epochs:
                 #     break
 
+        epochsOfDelete.append([epochsOfDelete[-1] + epoch])  # epochs number in which another cell is deleted
+
     print("Training finished, took {:.3f}s".format(time.time() - training_start_time))
-    return net, numDeleted, train_acc_total, train_loss_total, val_acc_total[1:], val_loss_total
+    return net, numDeleted, epochsOfDelete, train_acc_total, train_loss_total, val_acc_total[1:], val_loss_total
 
 def testNet(net, n_delete, test_loader, device):
     # At the end of the epoch, do a pass on the validation set
@@ -290,12 +295,13 @@ def testNet(net, n_delete, test_loader, device):
     true_cell_total = torch.tensor([], dtype=torch.int64)
     solved_cell_total = torch.tensor([], dtype=torch.int64)
     net.eval()
+    quizzesBoards = np.zeros((test_loader.dataset.data.shape[0], 81))
     with torch.no_grad():
-        for data in test_loader:
-            # Wrap tensors in Variables
+        for i, data in enumerate(test_loader):
             _, solutions = data
             solutions = solutions.float().to(device)
             quizzes = delete_cells_improved_complexity(solutions, n_delete, device=device)
+            quizzesBoards[samples_checked:samples_checked + len(quizzes)] = (quizzes.argmax(1) + 1).reshape(-1, 81)
             mask_of_deleted_cells = (quizzes.argmax(1) == 0)
             # Forward pass
             solved_boards = fillBlank_imporved_complexity(net, quizzes, n_delete, device)
@@ -309,7 +315,9 @@ def testNet(net, n_delete, test_loader, device):
             solved_cell_total = torch.cat((solved_cell_total, solved_boards[mask_of_deleted_cells]))
     boardAcc = (deltas == 0).float().mean()  # portion of correct solved quizzes
     plotConfusionMatrix(true_cell_total, solved_cell_total)
-    print("test images number: " + str(samples_checked) + '. Cell Acc:  %f, Board Acc:  %f' % (hits / runningDeletedNumber,  boardAcc))
+    print("test images number: " + str(samples_checked) + '. Cell Acc:  %f, Board Acc:  %f'
+          % (hits / runningDeletedNumber, boardAcc))
+    return quizzesBoards, deltas
 
 def diff(grids_true, grids_pred):
     # get number of errors on each quizz
@@ -319,3 +327,33 @@ def plotConfusionMatrix(truthBoards, predictedBoards):
     truthBoards = (truthBoards - 1)
     predictedBoards = (predictedBoards - 1)
     plot_CM_AUX(truthBoards, predictedBoards, normalize=True, class_names=np.arange(1, 10).astype(str))
+
+def runTSNE(test_loader, quizzesBoards, deltas):
+    # correctIndsOfBorads = np.where(deltas == 0)[0]
+    random_state = 42
+    np.random.seed(random_state)
+    # quizzes = (test_loader.dataset.data.argmax(1) + 1).reshape(-1, 81)
+    # solutions = (test_loader.dataset.solution.argmax(1) + 1).reshape(-1, 81)
+    allData = quizzesBoards
+    y = (deltas == 0)
+    # allData = np.concatenate((quizzes, solutions), axis=0)
+    scaler = StandardScaler()
+    allData_scaled = scaler.fit_transform(allData)
+    # y = np.append(np.zeros(quizzes.shape[0]), np.ones(solutions.shape[0]))
+    pca = PCA(3)
+    allData_embedded = pca.fit_transform(allData_scaled)
+    # for perp in np.arange(12, 120, 10):
+    allData_embedded = TSNE(n_components=3, perplexity=60, random_state=random_state).fit_transform(allData_scaled)
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    ax.scatter(allData_embedded[y == 0, 0],
+                allData_embedded[y == 0, 1],
+                allData_embedded[y == 0, 2], c='tab:blue', label='quizzes solved UNcorrectly')
+    ax.scatter(allData_embedded[y == 1, 0],
+                allData_embedded[y == 1, 1],
+                allData_embedded[y == 1, 2], c='tab:orange', label='quizzes solved correctly')
+    plt.xlabel("first component")
+    plt.ylabel("second component")
+    plt.title("PCA projection")
+    plt.legend()
+    plt.show()

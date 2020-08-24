@@ -47,7 +47,6 @@ class FC_1(torch.nn.Module):
         return x #
 
 # CNN:
-# model
 class CNN_1(torch.nn.Module):
 
     def __init__(self):
@@ -85,3 +84,17 @@ class CNN_1(torch.nn.Module):
         x = self.fc3(x).view(-1, solution_num_classes, solution_num_classes, solution_num_classes)
         x = self.soft(x)
         return x
+
+
+class ensamble(torch.nn.Module):
+    def __init__(self, CNNnetDict, FCnetDict):
+        super(ensamble, self).__init__()
+        self.CNNnet = CNN_1()
+        self.CNNnet.load_state_dict(CNNnetDict)
+        self.FCnet = FC_1()
+        self.FCnet.load_state_dict(FCnetDict)
+
+    def forward(self, x):
+        y1 = self.CNNnet(x)
+        y2 = self.FCnet(x)
+        return y1 + y2
