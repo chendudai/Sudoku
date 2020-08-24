@@ -354,3 +354,10 @@ Sudoku/dataset/1M_kaggle/quizzes.pkl
 Sudoku/dataset/1M_kaggle/solutions.pkl
 Sudoku/dataset/1M_kaggle/sudoku.csv
 Sudoku/dataset/1M_kaggle/sudoku.zip
+Sudoku/deltas_from_test_FCnet.npy
+Sudoku/originalGrid.py
+Sudoku/quizzesBoards_from_test_FCnet.npy
+Sudoku/unsolvedGrid.py
+Sudoku/net_dicts/CNN_1_dict
+Sudoku/net_dicts/dict and stats FC_1/FC_stats_LR0.0001_batchSize512_step2_patience10.txt
+Sudoku/net_dicts/dict and stats FC_1/readme.txt
