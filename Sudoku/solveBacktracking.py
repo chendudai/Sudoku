@@ -76,7 +76,7 @@ def solve_sudoku(arr):
 
     # If there is no unassigned location, we are done
     if (not find_empty_location(arr, l)):
-        return True
+        return True, arr
 
     # Assigning list values to row and col that we got from the above Function
     row = l[0]
@@ -92,14 +92,17 @@ def solve_sudoku(arr):
             arr[row][col] = num
 
             # return, if success, ya!
-            if (solve_sudoku(arr)):
-                return True
+            success, arr = solve_sudoku(arr)
+            if success:
+                return True, arr
+                # return True
 
             # failure, unmake & try again
             arr[row][col] = 0
 
     # this triggers backtracking
-    return False
+    return False, arr
+    # return False
 
 
 
@@ -160,8 +163,8 @@ if __name__ == "__main__":
     originalGrid = open('originalGrid.py', 'rb')
     originalGrid = pkl.load(originalGrid)
 
-    result = compereSolvedGridToOriginalGrid(originalGrid,grid)
-    print('The time that the backtracking solution took is:',elapsed)
-    print('The result of the backtracking solution is:',result)
+    result = compereSolvedGridToOriginalGrid(originalGrid, grid)
+    print('The time that the backtracking solution took is:', elapsed)
+    print('The result of the backtracking solution is:', result)
     unsolvedGrid.close()
 
