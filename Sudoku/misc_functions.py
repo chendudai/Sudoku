@@ -88,27 +88,6 @@ class MyDataset(Dataset):
     def __len__(self):
         return len(self.data)
 
-def fillBlank(net, quizzes, n_delete,  device):
-    boards = quizzes.argmax(1).to(device)  # numbers between 0-9.
-    for _ in range(n_delete):
-        preds = net(torch_categorical(boards, train_num_classes, device))
-        # preds = net(torch.from_numpy(to_categorical(boards, train_num_classes)).float().to(device))
-        probs = preds.max(1)[0]
-        values = preds.argmax(1) + 1
-        zeros = (boards == 0).reshape(-1, 81)
-
-        for board, prob, value, zero in zip(boards, probs, values, zeros):
-            if any(zero):
-                whereZeros = torch.nonzero(zero).view(-1)
-                confidence_position = whereZeros[prob.view(-1)[zero].argmax()]
-                confidence_value = value.view(-1)[confidence_position]
-                board.view(-1)[confidence_position] = confidence_value
-
-    if (boards == 0).any():
-        print("There is still a zero in boards!! Chen fault")
-    # return torch_categorical(boards - 1, solution_num_classes, device)  # numbers between 0-8.
-    return boards  # numbers between 1-9.
-
 def fillBlank_imporved_complexity(net, quizzes,  device, trackIdx=None, maxIter=None):
     boards = quizzes.argmax(1).to(device)  # numbers between 0-9.
     if trackIdx is not None:
@@ -148,7 +127,6 @@ def fillBlank_imporved_complexity(net, quizzes,  device, trackIdx=None, maxIter=
 
 def loss_func(quizzes, solutions):
     # Loss function
-    # loss = -torch.sum(torch.log(quizzes).mul(solutions), dim=1)
     loss = F.cross_entropy(quizzes, solutions.argmax(1), reduction='none')
     return loss, quizzes[0, :, :, :], solutions[0, :, :, :]
 
@@ -216,7 +194,7 @@ def getDataLoaders(batch_size, device):
         base_data_path = 'dataset/1M_kaggle/'
 
         a = pd.read_csv(base_data_path + 'sudoku.csv')
-        quizzes = torch.from_numpy(np.asarray([[int(s) for s in str] for str in a.quizzes]).reshape((-1, 9, 9)))
+        quizzes = torch.from_numpy(np.asarray([[int(s) for s in str] for str in a.quizzes], dtype='uint8').reshape((-1, 9, 9)))
         solutions = torch.from_numpy(np.asarray([[int(s) for s in str] for str in a.solutions]).reshape((-1, 9, 9)))
 
         # with open(base_data_path + 'quizzes.pkl', 'rb') as input:
@@ -396,6 +374,8 @@ def testNet(net, n_delete, test_loader, device):
           % (hits / runningDeletedNumber, boardAcc, runningDeletedNumber.__float__()/samples_checked, time_solved_net/samples_checked))
     return quizzesBoards, deltas
 
+
+
 def trackBoard(net, test_loader, device):
     trackIdx = 0
     trackPreds = []
@@ -416,27 +396,108 @@ def trackBoard(net, test_loader, device):
     plotTrackBoard(trackPreds, trackBoards, trackBoardsSolutions, 9)
     return trackPreds, trackBoards, trackBoardsSolutions
 
-def plotTrackBoard(trackPreds, trackBoards, trackBoardsSolutions, digit=[]):
-    fillx = -1
-    filly = -1
+def plotTrackCell(trackPreds, trackBoards, trackBoardsSolutions, x, y):
+    nextFill = [-1, -1]
     iterationsNum = 20
     boardIdx = 0
     # plot solution:
-    plotBoard(trackBoardsSolutions[boardIdx], digit, trackPreds[boardIdx][0][0], 'end')
+    plotBoard(trackBoardsSolutions[boardIdx], 'Solution')
     for i, partialBoard in enumerate(trackBoards[boardIdx][:iterationsNum]):
-        # draw(partialBoard)
         if i < len(trackBoards[boardIdx]):
-            fillx, filly = torch.where(trackBoards[boardIdx][i+1] != partialBoard)
-        plotBoard(partialBoard, digit, trackPreds[boardIdx][i + 1][digit-1], i, fillx, filly)
+            nextFill = torch.where(trackBoards[boardIdx][i + 1] != partialBoard)
+        if i > 0:
+            if partialBoard[lastFill] == trackBoardsSolutions[boardIdx][lastFill]:
+                lastFillColor = 'palegreen'
+            else:
+                lastFillColor = 'orangered'
+        else:
+            lastFillColor = ''
+        plotBoardTrackCell(partialBoard, trackPreds[boardIdx][i + 1, :, x, y], i, xCell, yCell, nextFill, lastFill, lastFillColor)
+        lastFill = nextFill
 
-def plotBoard(board, digit, predsOfDigit, stage, fillx=-1, filly=-1):
+def plotBoardTrackCell(board, predsOfCell, stage, xCell, yCell, nextFill, lastFill, lastFillColor):
     nx = 9
     ny = 9
-    # data = np.random.randint(0, 10, size=(ny, nx))
+    boardToPlot = board.cpu().numpy().astype('str')
+    boardToPlot[boardToPlot == '0'] = ''
+    fig, ax = plt.subplots(2, 1)
+    fig.suptitle('sudoku fill with confidence of cell: (' + str((xCell + 1, yCell + 1)) + '. iteration: ' + str(stage), fontsize = 20)
+    tb = ax[0].table(cellText=boardToPlot, loc=(0, 0), cellLoc='center', fontsize=20)
+    for i in range(9):
+        for j in range(9):
+            if (3 <= i < 6 and j < 3) or (3 <= i < 6 and 6 <= j) or (i < 3 and 3 <= j < 6) or (6 <= i and 3 <= j < 6):
+                tb[(i, j)].set_facecolor("gainsboro")
+            if (i == nextFill[0]) and (j == nextFill[1]):
+                tb[(i, j)].set_facecolor("aquamarine")
+            if (i == lastFill[0]) and (j == lastFill[1]):
+                tb[(i, j)].set_facecolor(lastFillColor)
+
+
+    tc = tb.properties()['child_artists']
+    for cell in tc:
+        cell.set_height(1 / ny)
+        cell.set_width(1 / nx)
+
+    # ax = plt.gca()
+    ax[0].set_xticks([])
+    ax[0].set_yticks([])
+
+    ax[1].bar(np.arange(1, 10), 100 * predsOfCell)
+    ax[1].set_title('Confidence in Each Digit [%]', fontsize=15)
+    ax[1].set_xlabel('Digits', fontsize=15)
+
+def plotBoard(board, title):
+    nx = 9
+    ny = 9
     boardToPlot = board.cpu().numpy().astype('str')
     boardToPlot[boardToPlot == '0'] = ''
     plt.figure()
-    plt.title('sudoku fill with confidence of digit: ' + str(digit) + '. iteration: ' + str(stage))
+    plt.title(title, fontsize=15)
+    tb = plt.table(cellText=boardToPlot, loc=(0, 0), cellLoc='center', fontsize=20)
+    for i in range(9):
+        for j in range(9):
+            if (3 <= i < 6 and j < 3) or (3 <= i < 6 and 6 <= j) or (i < 3 and 3 <= j < 6) or (6 <= i and 3 <= j < 6):
+                tb[(i, j)].set_facecolor("gainsboro")
+
+    tc = tb.properties()['child_artists']
+    for cell in tc:
+        cell.set_height(1 / ny)
+        cell.set_width(1 / nx)
+
+    ax = plt.gca()
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+def plotTrackBoard(trackPreds, trackBoards, trackBoardsSolutions, digit):
+    nextFill = [-1, -1]
+    lastFill = [-1, -1]
+
+    iterationsNum = 20
+    boardIdx = 0
+    # plot solution:
+    plotBoard(trackBoardsSolutions[boardIdx], title='Solution')
+    # plotBoardTrackDigit(trackBoardsSolutions[boardIdx], digit, trackPreds[boardIdx][0][0], 'end', nextFill, lastFill)
+    for i, partialBoard in enumerate(trackBoards[boardIdx][:iterationsNum]):
+        # draw(partialBoard)
+        if i < len(trackBoards[boardIdx]):
+            nextFill = torch.where(trackBoards[boardIdx][i+1] != partialBoard)
+        if i > 0:
+            if partialBoard[lastFill] == trackBoardsSolutions[boardIdx][lastFill]:
+                lastFillColor = 'palegreen'
+            else:
+                lastFillColor = 'orangered'
+        else:
+            lastFillColor = ''
+        plotBoardTrackDigit(partialBoard, digit, trackPreds[boardIdx][i + 1][digit-1], i, nextFill, lastFill, lastFillColor)
+        lastFill = nextFill
+
+def plotBoardTrackDigit(board, digit, predsOfDigit, stage, nextFill, lastFill, lastFillColor):
+    nx = 9
+    ny = 9
+    boardToPlot = board.cpu().numpy().astype('str')
+    boardToPlot[boardToPlot == '0'] = ''
+    plt.figure()
+    plt.title('sudoku fill with confidence of digit: ' + str(digit) + '. iteration: ' + str(stage), fontsize=15)
     tb = plt.table(cellText=boardToPlot, loc=(0, 0), cellLoc='center', fontsize=20)
     for i in range(9):
         for j in range(9):
@@ -446,10 +507,13 @@ def plotBoard(board, digit, predsOfDigit, stage, fillx=-1, filly=-1):
                 tb[(i, j)].set_text_props(text=t, fontsize=20, color='red', fontweight=100)
             else:
                 tb[(i, j)].set_text_props(fontsize=15)
+
             if (3 <= i < 6 and j < 3) or (3 <= i < 6 and 6 <= j) or (i < 3 and 3 <= j < 6) or (6 <= i and 3 <= j < 6):
                 tb[(i, j)].set_facecolor("gainsboro")
-            if (i == fillx) and (j == filly):
+            if (i == nextFill[0]) and (j == nextFill[1]):
                 tb[(i, j)].set_facecolor("aquamarine")
+            if (i == lastFill[0]) and (j == lastFill[1]):
+                tb[(i, j)].set_facecolor(lastFillColor)
 
 
     tc = tb.properties()['child_artists']
@@ -496,7 +560,7 @@ def runTSNE(test_loader, quizzesBoards, deltas):
                 allData_embedded[y == 1, 2], c='tab:orange', label='quizzes solved correctly')
     plt.xlabel("first component")
     plt.ylabel("second component")
-    plt.title("PCA projection")
+    plt.title("PCA projection", fontsize=15)
     plt.legend()
     plt.show()
 
@@ -538,7 +602,7 @@ def compareToBacktracking(net, quizzes, solutions, device, maxIterNet=None):
     time_backtracking = np.array(time_backtracking)
     time_net = np.array(time_net)
 
-
+    # plot running time
     plt.figure()
     plt.scatter(numDelete[BoardCorrectIdx_net & BoardCorrectIdx_backtracking] + 0.1,
                 time_net[BoardCorrectIdx_net & BoardCorrectIdx_backtracking], label='Net', marker='x')
@@ -551,12 +615,30 @@ def compareToBacktracking(net, quizzes, solutions, device, maxIterNet=None):
     plt.tick_params(labelsize=15)
     plt.grid()
     plt.annotate('#Boards: ' + str(len(quizzes)) + \
-                 '\nNet: Solved: ' + str(sum(BoardCorrectIdx_net)) + '. Average Time: {:.2f}'.format(time_net.mean()) + \
-                 '\nBactracking: Solved: ' + str(sum(BoardCorrectIdx_backtracking)) + '. Average Time: {:.2f}'.format(time_backtracking.mean()),
+                 '\nNet: Solved: ' + str(sum(BoardCorrectIdx_net)) + '. Average Time: {:.2f}'.format(time_net[BoardCorrectIdx_net].mean()) + \
+                 '\nBactracking: Solved: ' + str(sum(BoardCorrectIdx_backtracking)) + '. Average Time: {:.2f}'.format(time_backtracking[BoardCorrectIdx_backtracking].mean()),
                  xy=(0.3, 0.8), xycoords='axes fraction', backgroundcolor='palegreen', fontsize=12)
+
+    avgTimePerDel_net = np.zeros(np.unique(numDelete).size)
+    avgTimePerDel_backtracking = np.zeros(np.unique(numDelete).size)
+    for i, nDel in enumerate(np.unique(numDelete)):
+        indsOfRellevantBoards =np.where(numDelete == nDel)[0]
+        avgTimePerDel_net[i] = time_net[indsOfRellevantBoards].mean()
+        avgTimePerDel_backtracking[i] = time_net[indsOfRellevantBoards].mean()
+
+    # plot Average time vs nDelete
+    plt.figure()
+    plt.title('Average Running Time Per Deleted Number', fontsize=15)
+    w = 0.4
+    plt.bar(np.unique(numDelete) - w, avgTimePerDel_backtracking, label='BackTracking')
+    plt.bar(np.unique(numDelete), avgTimePerDel_net, label='Neural Net')
+    plt.xlabel('Deleted Number')
+    plt.ylabel('Average Running Time')
+    plt.grid()
+    plt.legend()
+    # plt.xticks(np.unique(numDelete))
+
     plt.show()
-
-
 
 def simulateDeleting(pullNum, rangeNum):
     deletedNum = np.zeros(rangeNum + 1)

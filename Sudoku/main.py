@@ -62,25 +62,25 @@ if __name__ == "__main__":
     #     pickle.dump(stats, handle, protocol=pickle.HIGHEST_PROTOCOL)
     # print('Stats saved!')
 
-    with open('net_dicts/dict and stats FC_1/stats_FC_1_deleteProperlyWithRept_maxDel100.txt', "rb") as fp:
-        stats = pickle.load(fp)  # Unpickling
-
-    train_loader, test_loader, val_loader = getDataLoaders(batch_size=stats['batch_size'], device=device)
+    # with open('net_dicts/dict and stats FC_1/stats_FC_1_deleteProperlyWithRept_maxDel100.txt', "rb") as fp:
+    #     stats = pickle.load(fp)  # Unpickling
+    #
+    # train_loader, test_loader, val_loader = getDataLoaders(batch_size=stats['batch_size'], device=device)
     # # quizzesBoards, deltas = testNet(stats['net'], 55, test_loader, device)
     # # plotStats(stats)
     #
-    it = iter(test_loader)
-    quizzes_1hot, solutions_1hot = it.next()
-    compareToBacktracking(stats['net'], quizzes_1hot.argmax(1), solutions_1hot.argmax(1) + 1, device)
+    # it = iter(test_loader)
+    # quizzes_1hot, solutions_1hot = it.next()
+    # compareToBacktracking(stats['net'], quizzes_1hot.argmax(1), solutions_1hot.argmax(1) + 1, device)
 
 
     # trackBoard(stats['net'], test_loader, device)
     # with open('track_data/trackDict1.txt', "rb") as fp:
     #     track_data = pickle.load(fp)  # Unpickling
     #
-    # plotTrackBoard(track_data['trackPreds'], track_data['trackBoards'], track_data['trackBoardsSolutions'], digit=3)
+    # plotBoardTrackDigit(track_data['trackPreds'], track_data['trackBoards'], track_data['trackBoardsSolutions'], digit=3)
 
-    # simulateDeleting(pullNum=110, rangeNum=47)
+    # simulateDeleting(pullNum=20, rangeNum=50)
 
 
 
