@@ -85,8 +85,8 @@ class CNN_1(torch.nn.Module):
         self.fc1 = torch.nn.Linear(3 * 9 * self.kenels_num, 9 ** 4)
         self.bn1 = torch.nn.BatchNorm1d(9 ** 4)
 
-        # self.fc2 = torch.nn.Linear(9 ** 4, 9 ** 3)
-        # self.bn2 = torch.nn.BatchNorm1d(9 ** 3)
+        self.fc2 = torch.nn.Linear(9 ** 4, 9 ** 3)
+        self.bn2 = torch.nn.BatchNorm1d(9 ** 3)
         # 64 input features, 10 output features for our 10 defined classes
         self.fc3 = torch.nn.Linear(9 ** 4, solution_num_classes ** 3)
 
@@ -101,8 +101,8 @@ class CNN_1(torch.nn.Module):
         x = torch.cat((y1, y2, x), dim=1)
         # x = x.view(-1, 9*self.kenels_num)
         # Computes the activation of the first fully connected layer
-        x = F.leaky_relu(self.bn1(self.fc1(x)))
-        # x = F.leaky_relu(self.bn2(self.fc2(x)))
+        x = F.relu(self.bn1(self.fc1(x)))
+        # x = F.relu(self.bn2(self.fc2(x)))
         # Computes the second fully connected layer (activation applied later)
         # Size changes from (1, 64) to (1, 10)
         x = self.fc3(x).view(-1, solution_num_classes, solution_num_classes, solution_num_classes)

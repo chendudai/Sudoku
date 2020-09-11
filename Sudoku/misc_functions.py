@@ -14,10 +14,8 @@ from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from solveBacktracking import solve_sudoku as solve_backtracking
-
-import turtle
-# import pygame
-# pygame.font.init()
+from collections import Counter
+from torch.utils.data.sampler import SubsetRandomSampler
 
 
 # constants:
@@ -69,6 +67,24 @@ def split_data(x, y, ratio_train=0.8, ratio_test=0.1, random_state=42):
 
     return x_train, x_val, x_test, y_train, y_val, y_test
 
+def split_data_new(x, ratio_train=0.8, ratio_test=0.1, random_state=42):
+    # Defines ratios, w.r.t. whole dataset.
+    ratio_val = 1 - ratio_test - ratio_train
+
+    # Produces test split.
+    x_remaining, x_test = train_test_split(
+        x, test_size=ratio_test, random_state=random_state)
+
+    # Adjusts val ratio, w.r.t. remaining dataset.
+    ratio_remaining = 1 - ratio_test
+    ratio_val_adjusted = ratio_val / ratio_remaining
+
+    # Produces train and val splits.
+    x_train, x_val = train_test_split(
+        x_remaining, test_size=ratio_val_adjusted, random_state=random_state)
+
+    return x_train, x_val, x_test
+
 # dataset object
 class MyDataset(Dataset):
     def __init__(self, data, solution, transform=None):
@@ -87,6 +103,27 @@ class MyDataset(Dataset):
 
     def __len__(self):
         return len(self.data)
+
+class MyNewDataset(Dataset):
+    def __init__(self, DF, transform=None):
+        self.dataFrame = DF
+        # self.solution = solution
+        self.transform = transform
+
+    def __getitem__(self, index):
+        data = self.dataFrame.iloc[index]
+        x = torch.from_numpy(np.asarray([int(s) for s in data.quizzes], dtype='uint8').reshape((9, 9)))
+        y = torch.from_numpy(np.asarray([int(s) for s in data.solutions], dtype='uint8').reshape((9, 9)))
+        x = torch.from_numpy(to_categorical(x, 10))
+        y = torch.from_numpy(to_categorical(y - 1, 9))
+
+        if self.transform:
+            x = self.transform(x)
+
+        return x, y
+
+    def __len__(self):
+        return len(self.dataFrame)
 
 def fillBlank_imporved_complexity(net, quizzes,  device, trackIdx=None, maxIter=None):
     boards = quizzes.argmax(1).to(device)  # numbers between 0-9.
@@ -182,11 +219,27 @@ def delete_cells_improved_complexity(grids, n_delete, device=torch.device("cpu")
 
     return torch_categorical(boards, train_num_classes, device)
 
+# b = []
+# numDel = (quizzes == 0).sum((1, 2))
+# q = np.where(numDel == 55)[0].size
+# for i in range(48, 59):
+#     b.append(np.where(numDel == i)[0])
+#
+# b = np.where(numDel >= 48)[0]
+# c = np.hstack(b)
+# d = pd.DataFrame.from_dict({'quizzes': a['quizzes'][b], 'solutions': a['solutions'][b]})
+# d.to_csv('dataset/9M_kaggle/sudoku_48_58.csv')
+# e = pd.read_csv('dataset/9M_kaggle/sudoku_48_58.csv')
+
 def getDataLoaders(batch_size, device):
     if device == torch.device("cuda:0"):
-        # if we run it through Colab:
+        # a = pd.read_csv('dataset/9M_kaggle/sudoku.csv')
+        # a = pd.read_csv('dataset/9M_kaggle/hard_sudoku.csv')  # delete above 55
+        # a = pd.read_csv('dataset/9M_kaggle/sudoku_45_54.csv')
+        # a = pd.read_csv('dataset/9M_kaggle/sudoku_48_58.csv')
         a = pd.read_csv('dataset/1M_kaggle/sudoku.csv')
         quizzes = torch.from_numpy(np.asarray([[int(s) for s in str] for str in a.quizzes], dtype='uint8').reshape((-1, 9, 9)))
+        # plotDeletedNumDistribution(quizzes)
         solutions = torch.from_numpy(np.asarray([[int(s) for s in str] for str in a.solutions], dtype='uint8').reshape((-1, 9, 9)))
         samplesNum = len(quizzes)
     else:
@@ -195,7 +248,7 @@ def getDataLoaders(batch_size, device):
 
         a = pd.read_csv(base_data_path + 'sudoku.csv')
         quizzes = torch.from_numpy(np.asarray([[int(s) for s in str] for str in a.quizzes], dtype='uint8').reshape((-1, 9, 9)))
-        solutions = torch.from_numpy(np.asarray([[int(s) for s in str] for str in a.solutions]).reshape((-1, 9, 9)))
+        solutions = torch.from_numpy(np.asarray([[int(s) for s in str] for str in a.solutions], dtype='uint8').reshape((-1, 9, 9)))
 
         # with open(base_data_path + 'quizzes.pkl', 'rb') as input:
         #     quizzes = pickle.load(input)
@@ -215,11 +268,28 @@ def getDataLoaders(batch_size, device):
     test_set = MyDataset(X_test, Y_test)
 
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=0, drop_last=True)
-    test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=True, num_workers=0, drop_last=False)
-    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True, num_workers=0, drop_last=False)
+    test_loader = DataLoader(test_set, batch_size=2048, shuffle=False, num_workers=0, drop_last=False)
+    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=0, drop_last=False)
     return train_loader, test_loader, val_loader
 
-def trainNet(net, batch_size, learning_rate, step, patience, maxDelete, valCalcFreq, train_loader, val_loader, device):
+def getNewDataLoaders(batch_size, device):
+    data_csv_path = 'dataset/9M_kaggle/sudoku.csv'
+    # data_csv_path = 'dataset/9M_kaggle/hard_sudoku.csv'  # delete above 55
+    # data_csv_path = 'dataset/9M_kaggle/sudoku_45_54.csv'
+    # data_csv_path = 'dataset/1M_kaggle/sudoku.csv'
+    DF = pd.read_csv(data_csv_path)
+    trainDF, valDF, testDF = split_data_new(DF)
+    train_set = MyNewDataset(trainDF)
+    val_set = MyNewDataset(valDF)
+    test_set = MyNewDataset(testDF)
+
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=0, drop_last=True)
+    test_loader = DataLoader(test_set, batch_size=2048, shuffle=False, num_workers=0, drop_last=False)
+    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=0, drop_last=False)
+    return train_loader, test_loader, val_loader
+
+
+def trainNet(net, batch_size, learning_rate, step, patience, maxDelete, deleteType, valCalcFreq, train_loader, val_loader, device):
     # Print all of the hyperparameters of the training iteration:
     print("===== HYPERPARAMETERS =====")
     print("batch_size=", batch_size)
@@ -241,11 +311,12 @@ def trainNet(net, batch_size, learning_rate, step, patience, maxDelete, valCalcF
 
     optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)
     delJumps = np.arange(12, maxDelete, step)
-    n_epochJumps = 100 * np.ones(delJumps.shape)
+    n_epochJumps = 7 * np.ones(delJumps.shape)
     epochsOfDelete = []   # from all epochs
     epochesValCalc = []
     epoch = 0
-    for n_delete, n_epochs in zip(np.append([1, 2, 3, 4, 6, 8, 10], delJumps), np.append(np.array([2, 2, 3, 4, 5, 8, 10]), n_epochJumps)):
+    # for n_delete, n_epochs in zip(np.append([1, 2, 3, 4, 6, 8, 10], delJumps), np.append(np.array([2, 2, 3, 4, 5, 6, 7]), n_epochJumps)):
+    for n_delete, n_epochs in zip(130, 50):
         print('Delete: ', n_delete)
         # for epoch in range(n_epochs):
         relEpoch = 0
@@ -267,7 +338,7 @@ def trainNet(net, batch_size, learning_rate, step, patience, maxDelete, valCalcF
                 Originquizzes, solutions = data
                 solutions = solutions.float().to(device)
                 Originquizzes = Originquizzes.float().to(device)
-                quizzes = delete_cells_improved_complexity(solutions, n_delete, device, deleteType=3, quizzesBoards=Originquizzes.argmax(1))
+                quizzes = delete_cells_improved_complexity(solutions, n_delete, device, deleteType, quizzesBoards=Originquizzes.argmax(1))
                 mask_of_deleted_cells = (quizzes.argmax(1) == 0).float()
                 # Set the parameter gradients to zero
                 optimizer.zero_grad()
@@ -307,7 +378,7 @@ def trainNet(net, batch_size, learning_rate, step, patience, maxDelete, valCalcF
                         # Wrap tensors in Variables
                         val_quizzesOrigin, val_solutions = data
                         val_solutions = val_solutions.float().to(device)
-                        val_quizzes = delete_cells_improved_complexity(val_solutions, n_delete, device=device, deleteType=3, quizzesBoards=val_quizzesOrigin.argmax(1))
+                        val_quizzes = delete_cells_improved_complexity(val_solutions, n_delete, device, deleteType, quizzesBoards=val_quizzesOrigin.argmax(1))
                         val_mask_of_deleted_cells = (val_quizzes.argmax(1) == 0).float()
                         # Forward pass
                         # val_outputs = net(val_quizzes)
@@ -337,7 +408,7 @@ def trainNet(net, batch_size, learning_rate, step, patience, maxDelete, valCalcF
     print("Training finished, took {:.3f}s".format(time.time() - training_start_time))
     return net, numDeleted, val_numDeleted, epochsOfDelete, epochesValCalc, train_acc_total, train_loss_total, val_acc_total[1:], val_loss_total
 
-def testNet(net, n_delete, test_loader, device):
+def testNet(net, test_loader, device):
     hits = 0
     deltas = torch.tensor([], dtype=torch.int64)
     runningDeletedNumber = 0
@@ -358,7 +429,7 @@ def testNet(net, n_delete, test_loader, device):
             mask_of_deleted_cells = (quizzes.argmax(1) == 0)
             # Forward pass
             t = time.time()
-            solved_boards = fillBlank_imporved_complexity(net, quizzes, device)
+            solved_boards = fillBlank_imporved_complexity(net, quizzes, device, maxIter=1)
             time_solved_net += (time.time() - t)
             # statistics:
             solutions_boards = solutions.argmax(1) + 1
@@ -398,6 +469,7 @@ def trackBoard(net, test_loader, device):
 
 def plotTrackCell(trackPreds, trackBoards, trackBoardsSolutions, x, y):
     nextFill = [-1, -1]
+    lastFill = [-1, -1]
     iterationsNum = 20
     boardIdx = 0
     # plot solution:
@@ -412,7 +484,7 @@ def plotTrackCell(trackPreds, trackBoards, trackBoardsSolutions, x, y):
                 lastFillColor = 'orangered'
         else:
             lastFillColor = ''
-        plotBoardTrackCell(partialBoard, trackPreds[boardIdx][i + 1, :, x, y], i, xCell, yCell, nextFill, lastFill, lastFillColor)
+        plotBoardTrackCell(partialBoard, trackPreds[boardIdx][i + 1, :, x, y], i, x, y, nextFill, lastFill, lastFillColor)
         lastFill = nextFill
 
 def plotBoardTrackCell(board, predsOfCell, stage, xCell, yCell, nextFill, lastFill, lastFillColor):
@@ -421,12 +493,14 @@ def plotBoardTrackCell(board, predsOfCell, stage, xCell, yCell, nextFill, lastFi
     boardToPlot = board.cpu().numpy().astype('str')
     boardToPlot[boardToPlot == '0'] = ''
     fig, ax = plt.subplots(2, 1)
-    fig.suptitle('sudoku fill with confidence of cell: (' + str((xCell + 1, yCell + 1)) + '. iteration: ' + str(stage), fontsize = 20)
+    fig.suptitle('sudoku fill with confidence of cell: ' + str((xCell + 1, yCell + 1)) + '. iteration: ' + str(stage), fontsize = 20)
     tb = ax[0].table(cellText=boardToPlot, loc=(0, 0), cellLoc='center', fontsize=20)
     for i in range(9):
         for j in range(9):
             if (3 <= i < 6 and j < 3) or (3 <= i < 6 and 6 <= j) or (i < 3 and 3 <= j < 6) or (6 <= i and 3 <= j < 6):
                 tb[(i, j)].set_facecolor("gainsboro")
+            if (i == xCell) and (j == yCell):
+                tb[(i, j)].set_facecolor('yellow')
             if (i == nextFill[0]) and (j == nextFill[1]):
                 tb[(i, j)].set_facecolor("aquamarine")
             if (i == lastFill[0]) and (j == lastFill[1]):
@@ -436,15 +510,19 @@ def plotBoardTrackCell(board, predsOfCell, stage, xCell, yCell, nextFill, lastFi
     tc = tb.properties()['child_artists']
     for cell in tc:
         cell.set_height(1 / ny)
-        cell.set_width(1 / nx)
+        cell.set_width(1 / nx / 2)
 
     # ax = plt.gca()
     ax[0].set_xticks([])
     ax[0].set_yticks([])
 
-    ax[1].bar(np.arange(1, 10), 100 * predsOfCell)
+    ax[1].bar(np.arange(1, 10), 100 * predsOfCell.cpu(), color='yellow')
     ax[1].set_title('Confidence in Each Digit [%]', fontsize=15)
     ax[1].set_xlabel('Digits', fontsize=15)
+    ax[1].grid()
+    plt.sca(ax[1])
+    plt.xticks(np.arange(1, 10), np.arange(1, 10))
+    # ax[1].set_xticks(np.arange(1, 10), np.arange(1, 10))
 
 def plotBoard(board, title):
     nx = 9
@@ -596,6 +674,8 @@ def compareToBacktracking(net, quizzes, solutions, device, maxIterNet=None):
             else:
                 BoardCorrectIdx_backtracking.append(False)
 
+            if i % 10 == 0:
+                print('Done: ', i, ' boards!')
     BoardCorrectIdx_backtracking = np.array(BoardCorrectIdx_backtracking)
     BoardCorrectIdx_net = np.array(BoardCorrectIdx_net)
     numDelete = np.array(numDelete)
@@ -624,19 +704,19 @@ def compareToBacktracking(net, quizzes, solutions, device, maxIterNet=None):
     for i, nDel in enumerate(np.unique(numDelete)):
         indsOfRellevantBoards =np.where(numDelete == nDel)[0]
         avgTimePerDel_net[i] = time_net[indsOfRellevantBoards].mean()
-        avgTimePerDel_backtracking[i] = time_net[indsOfRellevantBoards].mean()
+        avgTimePerDel_backtracking[i] = time_backtracking[indsOfRellevantBoards].mean()
 
     # plot Average time vs nDelete
     plt.figure()
-    plt.title('Average Running Time Per Deleted Number', fontsize=15)
-    w = 0.4
-    plt.bar(np.unique(numDelete) - w, avgTimePerDel_backtracking, label='BackTracking')
-    plt.bar(np.unique(numDelete), avgTimePerDel_net, label='Neural Net')
-    plt.xlabel('Deleted Number')
-    plt.ylabel('Average Running Time')
+    plt.title('Average Running Time Per Deleted Number of Elements', fontsize=15)
+    w = 0.2
+    plt.bar(np.unique(numDelete) - w, avgTimePerDel_backtracking, width=w, label='Backtracking')
+    plt.bar(np.unique(numDelete), avgTimePerDel_net, width=w, label='Neural Net')
+    plt.xlabel('Deleted Number of Elements', fontsize=15)
+    plt.ylabel('Average Running Time [s]', fontsize=15)
     plt.grid()
-    plt.legend()
-    # plt.xticks(np.unique(numDelete))
+    plt.legend(fontsize=15)
+    plt.xticks(np.unique(numDelete) - w/2, np.unique(numDelete))
 
     plt.show()
 
@@ -655,6 +735,20 @@ def simulateDeleting(pullNum, rangeNum):
     plt.ylabel('Probability', fontsize=15)
     plt.show()
 
+def plotDeletedNumDistribution(quizzesBoards):
+    numDel = (quizzesBoards == 0).sum((1, 2))
+    unique, values = zip(*Counter(np.hstack(numDel)).items())
+    unique = np.array(unique)
+    values = np.array(values)
+    plt.figure()
+    plt.bar(unique, 100 * values / sum(values))
+    plt.title('Number of Deleted Elements Distribution ', fontsize=15)
+    plt.xlabel('Number of Deleted Elements', fontsize=15)
+    plt.ylabel('Fraction [%]', fontsize=15)
+    plt.tick_params(labelsize=15)
+    plt.xticks(unique, unique)
+    plt.grid()
+    plt.show()
 
 
 
